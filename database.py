@@ -4,14 +4,22 @@ from pgvector.sqlalchemy import Vector
 
 # Sesuaikan dengan kredensial PostgreSQL lokal Anda
 # Format: postgresql://username:password@host:port/nama_database
-SQLALCHEMY_DATABASE_URL = "postgresql://root:pamelo04123@127.0.0.1:5432/telucup"
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:pamelo04@localhost:5432/telucup_db"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
-# Kita hanya perlu me-mapping tabel yang akan diubah oleh AI (photo_faces)
+# Mapping tabel face_embeddings (Ground Truth / Reference vectors)
+class FaceEmbedding(Base):
+    __tablename__ = "face_embeddings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey('players.id'), unique=True, index=True)
+    embedding = Column(Vector(512))
+
+# Mapping tabel photo_faces (AI detection results)
 class PhotoFace(Base):
     __tablename__ = "photo_faces"
 
