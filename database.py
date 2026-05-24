@@ -1,10 +1,11 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, Enum, JSON, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker
 from pgvector.sqlalchemy import Vector
+from dotenv import load_dotenv
+import os
 
-# Sesuaikan dengan kredensial PostgreSQL lokal Anda
-# Format: postgresql://username:password@host:port/nama_database
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:pamelo04@localhost:5432/telucup_db"
+load_dotenv()
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

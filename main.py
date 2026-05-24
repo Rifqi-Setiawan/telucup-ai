@@ -7,20 +7,22 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from PIL import Image
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+import os
 
 from facenet_pytorch import MTCNN
 from database import SessionLocal, PhotoFace, FaceEmbedding
 from ai_wrapper import AdaFaceWrapper
 
+load_dotenv()
 # Define lifespan context manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("[AI SETUP] Starting application lifespan...")
     # Initialize MTCNN
     app.state.mtcnn = MTCNN(keep_all=True, min_face_size=40)
-    # Initialize AdaFace (assuming weights are in 'weights/adaface.ckpt' or similar)
     try:
-        app.state.adaface = AdaFaceWrapper(weight_path='weights/adaface.ckpt', architecture='ir_50')
+        app.state.adaface = AdaFaceWrapper(weight_path='weights/adaface_ir50_webface4m.ckpt', architecture='ir_50')
     except Exception as e:
         print(f"[AI SETUP] Warning: AdaFace weight not loaded. Make sure the path is correct. {e}")
         app.state.adaface = None
@@ -127,7 +129,7 @@ def process_face_recognition(photo_id: int, image_url: str, db: Session, mtcnn, 
                 sim_score = None
                 
                 # Tentukan Threshold Similarity
-                THRESHOLD = 0.60 
+                THRESHOLD = float(os.getenv("FACE_MATCH_THRESHOLD", 0.60))
                 
                 if match_result and match_result.similarity_score is not None and match_result.similarity_score > THRESHOLD:
                     matched_id = match_result.player_id
