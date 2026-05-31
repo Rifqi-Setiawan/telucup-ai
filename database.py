@@ -1,8 +1,9 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Enum, JSON, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, Enum, JSON, ForeignKey, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from pgvector.sqlalchemy import Vector
 from dotenv import load_dotenv
 import os
+import datetime
 
 load_dotenv()
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
@@ -31,5 +32,5 @@ class PhotoFace(Base):
     similarity_score = Column(Float, nullable=True)
     bounding_box = Column(JSON, nullable=True)
     face_encoding = Column(Vector(512)) # pgvector 512 dimensi (output AdaFace)
-    
-    # Abaikan timestamps untuk insert cepat, atau tambahkan jika wajib
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
