@@ -17,7 +17,7 @@ class FaceEmbedding(Base):
     __tablename__ = "face_embeddings"
 
     id = Column(Integer, primary_key=True, index=True)
-    player_id = Column(Integer, unique=True, index=True)
+    player_id = Column(Integer, index=True)
     embedding = Column(JSON)
 
 # Mapping tabel photo_faces (AI detection results)

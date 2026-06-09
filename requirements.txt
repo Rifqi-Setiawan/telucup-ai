@@ -6,6 +6,7 @@ python-dotenv
 requests
 numpy
 pillow
+opencv-python
 facenet-pytorch
 torch
 torchvision

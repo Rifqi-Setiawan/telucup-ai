@@ -64,3 +64,4 @@ weights/
 *.pth
 *.h5
 *.onnx
+uvicorn_gpu*.log
