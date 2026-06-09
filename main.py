@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import numpy as np
 import requests
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from PIL import Image
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -40,6 +40,38 @@ def get_detection_threshold() -> float:
     return float(os.getenv("FACE_DETECTION_THRESHOLD", "0.50"))
 
 
+def cuda_runtime_ready(available_providers) -> bool:
+    if os.getenv("FACE_FORCE_CPU", "").lower() in {"1", "true", "yes"}:
+        print("[AI SETUP] FACE_FORCE_CPU aktif. InsightFace akan memakai CPU.")
+        return False
+
+    if "CUDAExecutionProvider" not in available_providers:
+        print("[AI SETUP] CUDAExecutionProvider tidak tersedia. InsightFace akan memakai CPU.")
+        return False
+
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            print("[AI SETUP] PyTorch tidak mendeteksi CUDA. InsightFace akan memakai CPU.")
+            return False
+    except Exception as exc:
+        print(f"[AI SETUP] Tidak bisa mengecek CUDA PyTorch ({exc}). InsightFace akan memakai CPU.")
+        return False
+
+    if os.name == "nt":
+        cuda_dll = "cublasLt64_12.dll"
+        path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+        if not any(os.path.exists(os.path.join(path_dir, cuda_dll)) for path_dir in path_dirs):
+            print(
+                f"[AI SETUP] {cuda_dll} tidak ditemukan di PATH. "
+                "InsightFace akan memakai CPU."
+            )
+            return False
+
+    return True
+
+
 def create_face_analyzer():
     try:
         import onnxruntime as ort
@@ -50,7 +82,10 @@ def create_face_analyzer():
         ) from exc
 
     available_providers = ort.get_available_providers()
-    preferred_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    preferred_providers = ["CPUExecutionProvider"]
+    if cuda_runtime_ready(available_providers):
+        preferred_providers.insert(0, "CUDAExecutionProvider")
+
     providers = [provider for provider in preferred_providers if provider in available_providers]
 
     if not providers:
@@ -222,7 +257,7 @@ def find_best_match(embedding_vector, known_faces):
     return matched_id, sim_score
 
 
-def process_face_recognition(photo_id: int, image_url: str, face_app, adaface):
+def process_face_recognition(photo_id: int, image_url: str, face_app, adaface) -> dict:
     """
     Background task: detect faces with RetinaFace, align each face using 5 landmarks,
     extract AdaFace embeddings, and match against registered player embeddings.
@@ -232,24 +267,31 @@ def process_face_recognition(photo_id: int, image_url: str, face_app, adaface):
 
     try:
         if not face_app:
-            print("[AI WORKER] Error: InsightFace detector belum dimuat.")
-            return
+            raise RuntimeError("InsightFace detector belum dimuat.")
 
         if not adaface:
-            print("[AI WORKER] Error: AdaFace model belum dimuat.")
-            return
+            raise RuntimeError("AdaFace model belum dimuat.")
 
         img = download_rgb_image(image_url)
         faces = detect_faces(face_app, img)
 
+        db.query(PhotoFace).filter(PhotoFace.event_photo_id == photo_id).delete()
+
         if not faces:
             print("[AI WORKER] Tidak ada wajah yang terdeteksi di foto ini.")
-            return
+            db.commit()
+            return {
+                "event_photo_id": photo_id,
+                "faces_detected": 0,
+                "faces_saved": 0,
+                "matched_faces": 0,
+            }
 
         print(f"[AI WORKER] Ditemukan {len(faces)} wajah. Memulai ekstraksi dan pencocokan...")
 
         known_faces = db.query(FaceEmbedding).all()
         successful_faces = 0
+        matched_faces = 0
         threshold = get_match_threshold()
 
         for i, face in enumerate(faces):
@@ -267,6 +309,7 @@ def process_face_recognition(photo_id: int, image_url: str, face_app, adaface):
                 matched_id, sim_score = find_best_match(embedding_vector, known_faces)
 
                 if matched_id is not None and sim_score >= threshold:
+                    matched_faces += 1
                     print(
                         f"  -> Cocok dengan Player ID {matched_id} "
                         f"(Kemiripan: {sim_score * 100:.2f}%)"
@@ -299,12 +342,21 @@ def process_face_recognition(photo_id: int, image_url: str, face_app, adaface):
             f"[AI WORKER] Selesai memproses foto ID {photo_id}. "
             f"Berhasil menyimpan {successful_faces}/{len(faces)} wajah."
         )
+        return {
+            "event_photo_id": photo_id,
+            "faces_detected": len(faces),
+            "faces_saved": successful_faces,
+            "matched_faces": matched_faces,
+        }
 
     except HTTPException as e:
+        db.rollback()
         print(f"[AI WORKER] Error: {e.detail}")
+        raise
     except Exception as e:
         db.rollback()
         print(f"[AI WORKER] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gagal memproses foto event: {str(e)}")
     finally:
         db.close()
 
@@ -312,14 +364,12 @@ def process_face_recognition(photo_id: int, image_url: str, face_app, adaface):
 @app.post("/api/process-photo")
 async def receive_photo_job(
     request: EventPhotoRequest,
-    background_tasks: BackgroundTasks,
     fastapi_req: Request,
 ):
     face_app = fastapi_req.app.state.face_app
     adaface = fastapi_req.app.state.adaface
 
-    background_tasks.add_task(
-        process_face_recognition,
+    result = process_face_recognition(
         request.event_photo_id,
         request.image_url,
         face_app,
@@ -328,7 +378,8 @@ async def receive_photo_job(
 
     return {
         "status": "success",
-        "message": "Job diterima. AI sedang mengekstrak wajah di latar belakang.",
+        "message": "Foto event selesai diproses oleh AI.",
+        "data": result,
     }
 
 

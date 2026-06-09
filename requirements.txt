@@ -4,7 +4,7 @@ sqlalchemy
 pymysql
 python-dotenv
 requests
-numpy
+numpy>=2.0,<2.3
 pillow
 opencv-python
 scikit-image>=0.26.0
