@@ -6,6 +6,7 @@ import os
 
 # Pastikan path import ini sesuai dengan letak file net.py Anda
 from models.net import build_model 
+from face_aligner import align_face_rgb
 
 class AdaFaceWrapper:
     def __init__(self, weight_path: str, architecture: str = 'ir_50'):
@@ -43,13 +44,13 @@ class AdaFaceWrapper:
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         ])
 
-    def extract_features(self, face_image: Image.Image) -> list:
+    def extract_features(self, aligned_face_image: Image.Image) -> list:
         """
-        Menerima gambar potongan wajah (PIL Image) RGB, mengonversi ke BGR,
+        Menerima gambar wajah aligned 112x112 (PIL Image) RGB, mengonversi ke BGR,
         lalu mengembalikan list 512 dimensi.
         """
         # PERBAIKAN WARNA OFFICIAL: AdaFace dilatih dengan gambar BGR (OpenCV)
-        face_array = np.array(face_image)
+        face_array = np.array(aligned_face_image.convert("RGB"))
         face_bgr_array = face_array[:, :, ::-1] 
         face_bgr_image = Image.fromarray(face_bgr_array)
 
@@ -60,3 +61,11 @@ class AdaFaceWrapper:
             features, _ = self.model(tensor)
             
         return features[0].cpu().numpy().tolist()
+
+    def align_and_extract(self, image: Image.Image, landmarks) -> list:
+        """
+        Menerima full image RGB + 5 landmarks, melakukan ArcFace/AdaFace alignment,
+        lalu mengembalikan embedding 512 dimensi.
+        """
+        aligned_face = align_face_rgb(image, landmarks, output_size=112)
+        return self.extract_features(aligned_face)

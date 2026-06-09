@@ -6,6 +6,9 @@ python-dotenv
 requests
 numpy
 pillow
-facenet-pytorch
+opencv-python
+scikit-image>=0.26.0
+insightface
+onnxruntime-gpu
 torch
 torchvision
