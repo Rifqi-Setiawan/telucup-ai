@@ -1,21 +1,22 @@
-# Byte-compiled / optimized / DLL files
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Environments
+# Local environment and secrets
 .env
-.venv
-env/
+.env.*
+!.env.example
+.venv/
 venv/
+env/
 ENV/
 env.bak/
 venv.bak/
 
-# Distribution / packaging
+# Build and packaging output
 .Python
 build/
-develop-eggs/
 dist/
 downloads/
 eggs/
@@ -32,33 +33,42 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# IDEs / Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Unit test / coverage reports
+# Tests and tooling cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 htmlcov/
 .tox/
 .nox/
 .coverage
 .coverage.*
-.cache
+.cache/
 nosetests.xml
 coverage.xml
 *.cover
 *.pyw
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# OS generated files
+# Editors and OS files
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# AI Models and Weights
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# AI models and generated data
 weights/
+checkpoints/
 *.ckpt
 *.pt
 *.pth

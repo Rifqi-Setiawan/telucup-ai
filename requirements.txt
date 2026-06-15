@@ -3,6 +3,12 @@ uvicorn[standard]
 sqlalchemy
 pymysql
 python-dotenv
+langchain>=0.3.0
+langchain-google-genai>=2.0.0
+langchain-core>=0.3.0
+langgraph>=0.2.0
+httpx>=0.27.0
+slowapi>=0.1.9
 requests
 numpy>=2.0,<2.3
 pillow

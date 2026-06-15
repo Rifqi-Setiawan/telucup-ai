@@ -6,12 +6,18 @@ from contextlib import asynccontextmanager
 import numpy as np
 import requests
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from PIL import Image
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
-from ai_wrapper import AdaFaceWrapper
+from chatbot.agent import run_agent
+from chatbot.config import INTERNAL_SECRET, RATE_LIMIT
+from chatbot.schemas import ChatRequest, ChatResponse
 from database import FaceEmbedding, PhotoFace, SessionLocal
 
 load_dotenv()
@@ -118,6 +124,8 @@ async def lifespan(app: FastAPI):
         app.state.face_app = None
 
     try:
+        from ai_wrapper import AdaFaceWrapper
+
         app.state.adaface = AdaFaceWrapper(
             weight_path="weights/adaface_ir50_webface4m.ckpt",
             architecture="ir_50",
@@ -134,6 +142,27 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Telucup Face Recognition Engine", lifespan=lifespan)
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_handler(request, exc):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "status": "error",
+            "message": "Terlalu banyak permintaan ke AI Assistant. Coba lagi sebentar.",
+        },
+    )
+
+
+def _verify_internal_secret(x_internal_secret: str | None):
+    if not INTERNAL_SECRET:
+        return
+
+    if x_internal_secret != INTERNAL_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def get_db():
@@ -509,6 +538,43 @@ async def compare_faces(
                 "bounding_box": bbox2,
             },
         },
+    }
+
+
+@app.post("/api/chatbot/ask", response_model=ChatResponse)
+@limiter.limit(RATE_LIMIT)
+async def chatbot_ask(
+    request: Request,
+    payload: ChatRequest,
+    x_internal_secret: str | None = Header(default=None),
+):
+    """
+    Endpoint chatbot stateless.
+    Dipanggil oleh Laravel proxy, bukan oleh browser secara langsung.
+    """
+    _verify_internal_secret(x_internal_secret)
+
+    try:
+        answer = run_agent(payload.question)
+        return ChatResponse(status="success", answer=answer)
+    except Exception as exc:
+        print(f"[CHATBOT] Error: {str(exc)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "answer": "Maaf, terjadi kendala saat memproses pertanyaan Anda. Silakan coba lagi.",
+                "meta": {"error_type": type(exc).__name__},
+            },
+        )
+
+
+@app.get("/api/chatbot/health")
+def chatbot_health():
+    return {
+        "status": "success",
+        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        "laravel_public_api_base_url": os.getenv("LARAVEL_PUBLIC_API_BASE_URL", "http://localhost:8000/api/public"),
     }
 
 
